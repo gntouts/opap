@@ -1,6 +1,15 @@
 import sqlite3
 import csv
-DB = 'kinodata.db'
+import requests
+import json
+DB = 'correct.db'
+
+
+'''---------------------------------------------------------------------------------'''
+
+'''---------------------------DATA MANIPULATION FUNCTIONS---------------------------'''
+
+'''---------------------------------------------------------------------------------'''
 
 
 def stringToInt(arr):
@@ -15,6 +24,17 @@ def stringToInt(arr):
     return arr
 
 
+def arrayToString(arr):
+    '''Takes an array of integers and returns a string of these integers divided by whitespaces.
+
+    For example: [1, 23, 54] returns "1 23 54"
+    '''
+
+    temp = ""
+    for i in range(len(arr)):
+        temp += str(arr[i])+" "
+    return temp[:-1]
+
 
 def sortArray(arr):
     '''Sorts a 2-D array (arr) based on the values of the first "element" (arr[i][0]).
@@ -24,6 +44,102 @@ def sortArray(arr):
     
     arr.sort(key = sortFirst, reverse = True)
     return arr
+
+
+'''---------------------------------------------------------------------------------'''
+
+'''----------------------------FUNCTIONS FOR APItoDB.py-----------------------------'''
+
+'''---------------------------------------------------------------------------------'''
+
+
+def createTable():
+    '''Creates table 'kino' inside the Database.
+
+    You have to declare a constant 'DB' at the top of the 'functions.py' file for the
+    function to know which
+    database to use.
+
+    eg: DB = 'kino.db'
+    '''
+    conn = sqlite3.connect(DB)
+    query = 'CREATE TABLE IF NOT EXISTS kino (drawid INTEGER, winning TEXT)'
+    with conn:
+        c = conn.cursor()
+        c.execute(query)
+
+
+def insertData(arg1, arg2):
+    '''Takes arg1 and arg2 and inserts them as drawId and winning numbers into table kino.
+
+    drawId=arg1, winning=arg2
+
+    arg2 must be a STRING containing the winning numbers separated by single spaces.
+
+    eg: arg2='4 54 21 4'
+
+    '''
+    conn = sqlite3.connect('kino.db')
+    with conn:
+        c = conn.cursor()
+        c.execute("""INSERT INTO kino (drawid,
+                    winning)
+                    VALUES (:drawid,
+                    :winning)""",
+                  {'drawid': arg1, 'winning': arg2})
+
+
+def makeURL(startId, stopId):
+    '''Returns the URL for the API request. It takes the start drawId and stop drawId as arguments'''
+    return "https://api.opap.gr/draws/v3.0/1100/draw-id/"+str(startId)+"/"+str(stopId)+"?property=drawId&property=winningNumbers"
+
+
+def sendReq(reqUrl):
+    '''Takes an URL as argument, send a JSON API request and returns a 2D array with the draw ID and the winning numbers
+    provided by the response. The format of the returnt array is:
+    
+    Array[i][0]: drawId 
+    
+    Array[i][1]: list of winning numbers
+    '''
+    response = requests.get(reqUrl).json()['content']
+    temp = []
+    for i in response:
+        temp1=[]
+        temp1.append(i['drawId'])
+        temp1.append(i['winningNumbers']['list'])
+        temp.append(temp1)
+    return temp
+
+
+def getAllData(target):
+    '''Sends requests for all data available and appends them to the 'target' Array'''
+
+    def appendEach(source, target):
+        for item in source:
+            target.append(item)
+    
+    def getEm(arg1, arg2, target):
+        source = sendReq(makeURL(arg1, arg2))
+        appendEach(source, target)
+
+    end = getActiveDraw()
+    start = 704207
+    for i in range(start, end, 10):
+        if not (i-start)%1000: print(str(i-start)+" / "+str(end-start))
+        getEm(i-10, i-1, target)
+        if i+10>end:
+            getEm(i, end-1, target)
+
+def parseToDB(arr):
+    '''Takes the result array created by getAllData() and inserts it into our Database, using the insertData() function.'''
+    for item in arr:
+        insertData(item[0], arrayToString(item[1]))
+
+
+def getActiveDraw():
+    '''Returns the drawId of the currently active draw'''
+    return int(requests.get('https://api.opap.gr/draws/v3.0/1100/active').json()['drawId'])
 
 
 
@@ -39,7 +155,7 @@ def readFromDB():
     '''Selects all rows in DB and returns them in an array, where Array[i][0] is the drawID and
     Array[i][1] is a list of the winning numbers.
     
-    You have to declare a constant "DB" at the top of your file for the function to know which
+    You have to declare a constant 'DB' at the top of the 'functions.py' file for the function to know which
     database to use. 
     
     eg: DB = 'kino.db'
