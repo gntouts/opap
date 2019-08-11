@@ -144,6 +144,7 @@ def createImage(row):
 
 
 def main():
+    os.system("mkdir img")
     createDBTable()
     conn = sqlite3.connect(DB)
     c = conn.cursor()
